@@ -1756,17 +1756,6 @@ public class CpEntityManager implements EntityManager {
         return obj;
     }
 
-//    @Override
-//    public Entity createCollectionSchema( String collectionName ){
-//        MapManager mm = getMapManagerForTypes();
-//        String jsonMap = mm.getString( collectionName );
-//
-//        Object obj = JsonUtils.parse( jsonMap );
-//
-//        return null;
-//    }
-
-
         @Override
     public void grantRolePermission( String roleName, String permission ) throws Exception {
         roleName = roleName.toLowerCase();
