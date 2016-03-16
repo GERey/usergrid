@@ -124,7 +124,7 @@ public class CollectionsResourceIT extends AbstractRestIT {
      *
      * @throws Exception
      */
-    @Test
+    @Ignore("The reindexing isn't currently supported yet.")
     public void postToCollectionSchemaUpdateExistingCollection() throws Exception {
 
         //Create test collection with test entity that is full text indexed.
