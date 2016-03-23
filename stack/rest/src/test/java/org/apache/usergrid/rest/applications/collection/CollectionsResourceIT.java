@@ -20,6 +20,8 @@ package org.apache.usergrid.rest.applications.collection;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import org.apache.usergrid.mq.Query;
+import org.apache.usergrid.persistence.Schema;
+import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.rest.test.resource.AbstractRestIT;
 import org.apache.usergrid.rest.test.resource.model.ApiResponse;
 import org.apache.usergrid.rest.test.resource.model.Collection;
@@ -42,6 +44,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.avro.generic.GenericData;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.Assert.*;
 
@@ -576,6 +582,54 @@ public class CollectionsResourceIT extends AbstractRestIT {
         Collection calendarListCollection = this.app().collection(collection).get(queryParameters);
         assertEquals(calendarListCollection.hasNext(), true);
 
+    }
+
+    @Test
+    public void testDefaultCollectionReturning() throws IOException {
+
+        ApiResponse usersDefaultCollection = this.app().get();
+
+        LinkedHashMap collectionHashMap = ( LinkedHashMap ) usersDefaultCollection.getEntity().get( "metadata" );
+
+        //make sure you have all the other default collections once you have users in place.
+        Set<String> system_collections = Schema.getDefaultSchema().getCollectionNames( Application.ENTITY_TYPE );
+        for(String collectionName : system_collections){
+            assertNotSame( null,((LinkedHashMap)(collectionHashMap.get( "collections" ))).get( collectionName ));
+        }
+    }
+
+    @Ignore("Ignored because we no longer retain custom collections after deleting the last entity in a collection"
+        + "This test can be used to verify that works when we implement it")
+    @Test
+    public void testNewlyCreatedCollectionReturnsWhenEmpty(){
+        String collectionName =  "testDefaultCollectionReturnings";
+
+        Map<String,Object> payload = new HashMap(  );
+        payload.put( "hello","test" );
+        ApiResponse testEntity = this.app().collection( collectionName ).post( payload );
+
+        //Verify that the below collection actually does exist.
+        ApiResponse usersDefaultCollection = this.app().get();
+
+        LinkedHashMap collectionHashMap = ( LinkedHashMap ) usersDefaultCollection.getEntity().get( "metadata" );
+
+        assertNotSame( null,((LinkedHashMap)(collectionHashMap.get( "collections" ))).get( collectionName.toLowerCase() ));
+
+        this.refreshIndex();
+        this.app().collection( collectionName ).entity( testEntity.getEntity().getUuid() ).delete();
+        this.refreshIndex();
+
+
+        //Verify that the collection still exists despite deleting its only entity.)
+        usersDefaultCollection = this.app().get();
+
+        collectionHashMap = ( LinkedHashMap ) usersDefaultCollection.getEntity().get( "metadata" );
+
+        assertNotSame( null,((LinkedHashMap)(collectionHashMap.get( "collections" ))).get( collectionName.toLowerCase() ));
+
+        Collection createdCollectionResponse = this.app().collection( collectionName ).get();
+
+        assertEquals( 0,createdCollectionResponse.getNumOfEntities() );
     }
 
 

@@ -26,6 +26,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.usergrid.persistence.Schema;
 import org.apache.usergrid.persistence.index.*;
@@ -123,7 +124,8 @@ public class IndexServiceImpl implements IndexService {
 
         //do our observable for batching
         //try to send a whole batch if we can
-        final Observable<IndexOperationMessage>  batches =  sourceEdgesToIndex.buffer( indexFig.getIndexBatchSize() )
+        final Observable<IndexOperationMessage>  batches =  sourceEdgesToIndex
+            .buffer(250, TimeUnit.MILLISECONDS, indexFig.getIndexBatchSize() )
 
             //map into batches based on our buffer size
             .flatMap( buffer -> Observable.from( buffer )
