@@ -27,7 +27,6 @@ var colors = require('colors');
 
 describe("** Usergrid REST Integration Tests **", function() {
     before(function(done) {
-        this.timeout(30000);
         console.log("    setup");
         setup.do(function(err) {
             should(err).be.null;
@@ -63,16 +62,11 @@ describe("** Usergrid REST Integration Tests **", function() {
     });
     after(function(done) {
         this.timeout(180000);
-        console.log("    teardown (sleep 5 sec before)");
-        setTimeout(function(){
-
-            teardown.do(function(err) {
-                should(err).be.null;
-                console.log("      ✓".green + " done".grey);
-                done();
-            })
-
-        }, 5000);
-
+        console.log("    teardown");
+        teardown.do(function(err) {
+            should(err).be.null;
+            console.log("      ✓".green + " done".grey);
+            done();
+        })
     });
 });

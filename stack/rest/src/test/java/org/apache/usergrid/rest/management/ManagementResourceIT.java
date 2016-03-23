@@ -618,15 +618,15 @@ public class ManagementResourceIT extends AbstractRestIT {
         management().orgs().post(
             new Organization( username, username, username+"@example.com", username, "password", null ) );
 
-        Map<String, Object> loginInfo = new HashMap<String, Object>() {{
-            put("username", username );
-            put("password", "password" );
-            put("grant_type", "password");
-        }};
+        refreshIndex();
 
-        JsonNode accessInfoNode = management.token()
-            .post( JsonNode.class, loginInfo );
-        String accessToken = accessInfoNode.get( "access_token" ).asText();
+        refreshIndex();
+        QueryParameters queryParams = new QueryParameters()
+            .addParam( "username", username )
+            .addParam( "password", "password" )
+            .addParam( "grant_type", "password" );
+        Token accessInfoNode = management.token().get(queryParams);
+        String accessToken = accessInfoNode.getAccessToken();
 
         // set the Usergrid Central SSO URL because Tomcat port is dynamically assigned
 
@@ -635,25 +635,47 @@ public class ManagementResourceIT extends AbstractRestIT {
         props.put( USERGRID_CENTRAL_URL, getBaseURI().toURL().toExternalForm() );
         pathResource( "testproperties" ).post( props );
 
+        try {
 
-        // TODO: how do we unit test SSO now that we have no external token end-point?
+            // attempt to validate the token, must be valid
+            queryParams = new QueryParameters()
+                .addParam( "ext_access_token", accessToken )
+                .addParam( "ttl", "1000" );
 
+            Entity validatedNode = management.externaltoken().get( Entity.class, queryParams );
+            String validatedAccessToken = validatedNode.get( "access_token" ).toString();
+            assertEquals( accessToken, validatedAccessToken );
 
-        JsonNode node = pathResource("/management/me").get( JsonNode.class,  new QueryParameters()
-            .addParam( "access_token", accessToken) );
+            // attempt to validate an invalid token, must fail
 
+            try {
+                queryParams = new QueryParameters()
+                    .addParam( "access_token", suToken )
+                    .addParam( "ext_access_token", "rubbish_token" )
+                    .addParam( "ttl", "1000" );
 
-        logger.info( "node: {}", node );
-        String token = node.get( "access_token" ).asText();
+                validatedNode = management.externaltoken().get( Entity.class, queryParams );
 
-        assertNotNull( token );
+                fail( "Validation should have failed" );
 
-        // TODO: how do we test the create new user and organization case?
+            } catch (ClientErrorException actual) {
+                assertEquals( 404, actual.getResponse().getStatus() );
+                String errorMsg = actual.getResponse().readEntity( JsonNode.class )
+                    .get( "error_description" ).toString();
+                logger.error( "ERROR: " + errorMsg );
+                assertTrue( errorMsg.contains( "Cannot find Admin User" ) );
+            }
 
-        // unset the Usergrid Central SSO URL so it does not interfere with other tests
+            // TODO: how do we test the create new user and organization case?
 
-        props.put( USERGRID_CENTRAL_URL, "" );
-        pathResource( "testproperties" ).post( props );
+        } finally {
+
+            // unset the Usergrid Central SSO URL so it does not interfere with other tests
+
+            props.put( USERGRID_CENTRAL_URL, "" );
+            pathResource( "testproperties" ).post( props );
+        }
+
     }
 
 

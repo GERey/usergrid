@@ -22,7 +22,9 @@ package org.apache.usergrid.corepersistence.asyncevents;
 
 import org.apache.usergrid.corepersistence.index.ReIndexAction;
 import org.apache.usergrid.persistence.core.scope.ApplicationScope;
+import org.apache.usergrid.persistence.entities.Application;
 import org.apache.usergrid.persistence.graph.Edge;
+import org.apache.usergrid.persistence.index.IndexLocationStrategy;
 import org.apache.usergrid.persistence.index.impl.IndexOperationMessage;
 import org.apache.usergrid.persistence.model.entity.Entity;
 import org.apache.usergrid.persistence.model.entity.Id;
@@ -46,9 +48,8 @@ public interface AsyncEventService extends ReIndexAction {
      * After SQS is removed, the tests should be enhanced to ensure that we're processing our queues correctly.
      * @param applicationScope
      * @param entity The entity to index.  Should be fired when an entity is updated
-     * @param updatedAfter
      */
-    void queueEntityIndexUpdate(final ApplicationScope applicationScope, final Entity entity, long updatedAfter);
+    void queueEntityIndexUpdate( final ApplicationScope applicationScope, final Entity entity);
 
 
     /**
@@ -87,13 +88,6 @@ public interface AsyncEventService extends ReIndexAction {
      * @return
      */
     long getQueueDepth();
-
-    /**
-     * name of current queue manager implemented
-     * @return
-     */
-    String getQueueManagerClass();
-
 
 
 

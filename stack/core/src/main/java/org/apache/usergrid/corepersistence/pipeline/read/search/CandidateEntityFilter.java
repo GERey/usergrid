@@ -230,16 +230,10 @@ public class CandidateEntityFilter extends AbstractFilter<FilterResult<Candidate
 
 
             //entity is newer than ES version, could be an update or the entity is marked as deleted
-            if ( UUIDComparator.staticCompare( entityVersion, candidateVersion ) > 0 ||
-                    !entity.getEntity().isPresent()  ||
-                    entity.getStatus() == MvccEntity.Status.DELETED ) {
+            if ( UUIDComparator.staticCompare( entityVersion, candidateVersion ) > 0 || !entity.getEntity().isPresent()) {
 
-                // when updating entities, we don't delete previous versions from ES so this action is expected
-                if(logger.isDebugEnabled()){
-                    logger.debug( "Deindexing stale entity on edge {} for entityId {} and version {}",
+                logger.warn( "Deindexing stale entity on edge {} for entityId {} and version {}",
                         searchEdge, entityId, entityVersion);
-                }
-
                 batch.deindex( searchEdge, entityId, candidateVersion );
                 return;
             }

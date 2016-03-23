@@ -32,7 +32,6 @@ import com.netflix.astyanax.connectionpool.ConnectionPoolConfiguration;
 import com.netflix.astyanax.connectionpool.NodeDiscoveryType;
 import com.netflix.astyanax.connectionpool.exceptions.ConnectionException;
 import com.netflix.astyanax.connectionpool.impl.ConnectionPoolConfigurationImpl;
-import com.netflix.astyanax.connectionpool.impl.SimpleAuthenticationCredentials;
 import com.netflix.astyanax.connectionpool.impl.Slf4jConnectionPoolMonitorImpl;
 import com.netflix.astyanax.impl.AstyanaxConfigurationImpl;
 import com.netflix.astyanax.thrift.ThriftFamilyFactory;
@@ -159,33 +158,12 @@ public class CassandraClusterImpl implements CassandraCluster {
 
     private ConnectionPoolConfiguration getConnectionPoolConfig ( final String poolName, final int poolSize ){
 
-        ConnectionPoolConfiguration config;
-        final String username = cassandraFig.getUsername();
-        final String password = cassandraFig.getPassword();
-
-        if ( username != null && !username.isEmpty() && password != null && !password.isEmpty() ){
-
-            config = new ConnectionPoolConfigurationImpl( poolName )
-                .setPort( cassandraFig.getThriftPort() )
-                .setLocalDatacenter( cassandraFig.getLocalDataCenter() )
-                .setMaxConnsPerHost( poolSize )
-                .setSeeds( cassandraFig.getHosts() )
-                .setSocketTimeout( cassandraFig.getTimeout() )
-                .setAuthenticationCredentials(new SimpleAuthenticationCredentials( username, password));
-
-        } else {
-
-            // create instance of the connection pool without credential if they are not set
-            config = new ConnectionPoolConfigurationImpl( poolName )
-                .setPort( cassandraFig.getThriftPort() )
-                .setLocalDatacenter( cassandraFig.getLocalDataCenter() )
-                .setMaxConnsPerHost( poolSize )
-                .setSeeds( cassandraFig.getHosts() )
-                .setSocketTimeout( cassandraFig.getTimeout() );
-        }
-
-
-        return config;
+        return new ConnectionPoolConfigurationImpl( poolName )
+            .setPort( cassandraFig.getThriftPort() )
+            .setLocalDatacenter( cassandraFig.getLocalDataCenter() )
+            .setMaxConnsPerHost( poolSize )
+            .setSeeds( cassandraFig.getHosts() )
+            .setSocketTimeout( cassandraFig.getTimeout() );
 
     }
 

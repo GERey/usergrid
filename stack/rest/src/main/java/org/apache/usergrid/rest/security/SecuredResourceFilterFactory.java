@@ -368,7 +368,7 @@ public class SecuredResourceFilterFactory implements DynamicFeature {
                 if (logger.isTraceEnabled()) {
                     logger.trace("AdminUserFilter.authorize");
                 }
-                if (!isUser( getUserIdentifier() ) && !isServiceAdmin() ) {
+                if (!isUser( getUserIdentifier() )) {
                     throw mappableSecurityException( "unauthorized", "No admin user access authorized" );
                 }
             }

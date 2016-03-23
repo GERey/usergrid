@@ -594,7 +594,7 @@ public class CpEntityManager implements EntityManager {
 
         // update in all containing collections and connection indexes
 
-        indexService.queueEntityIndexUpdate( applicationScope, cpEntity, 0);
+        indexService.queueEntityIndexUpdate( applicationScope, cpEntity );
     }
 
 
@@ -749,21 +749,7 @@ public class CpEntityManager implements EntityManager {
     @Override
     public Set<String> getApplicationCollections() throws Exception {
 
-        Set<String> existingCollections = getRelationManager( getApplication() ).getCollections();
-
-        Set<String> system_collections = Schema.getDefaultSchema().getCollectionNames( Application.ENTITY_TYPE );
-        if ( system_collections != null ) {
-            for ( String collection : system_collections ) {
-                if ( !Schema.isAssociatedEntityType( collection ) ) {
-                    if(!existingCollections.contains( collection )) {
-                        existingCollections.add( collection );
-                    }
-                }
-            }
-        }
-
-        return existingCollections;
-
+        return getRelationManager( getApplication() ).getCollections();
     }
 
 
@@ -1125,7 +1111,7 @@ public class CpEntityManager implements EntityManager {
 
         //Adding graphite metrics
 
-        indexService.queueEntityIndexUpdate(applicationScope, cpEntity, 0);
+        indexService.queueEntityIndexUpdate(applicationScope, cpEntity);
     }
 
 

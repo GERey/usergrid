@@ -292,10 +292,7 @@ public class ServiceManager {
             }
         } //TODO:Find a different way to express this exception. The real exception is returned above. This just needs to be handled some way.
         catch ( ClassNotFoundException e1 ) {
-            if(logger.isDebugEnabled()) {
-                logger.debug( "Could not load class, trying fallback.", e1 );
-            }
-
+            logger.debug("Could not load class, trying fallback.", e1);
         }
         return null;
     }

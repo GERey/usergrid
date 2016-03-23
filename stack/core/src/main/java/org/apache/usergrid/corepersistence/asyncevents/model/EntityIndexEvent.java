@@ -17,21 +17,38 @@
  * under the License.
  */
 
-package org.apache.usergrid.corepersistence.asyncevents;
+package org.apache.usergrid.corepersistence.asyncevents.model;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.usergrid.persistence.collection.serialization.impl.migration.EntityIdScope;
 
 
-import java.util.UUID;
-
-public class IndexDocNotFoundException extends RuntimeException {
-
-    final UUID batchId;
-
-    public IndexDocNotFoundException(final UUID batchId){
-
-        super("Index batch ID "+batchId.toString()+" not found in map persistence");
-        this.batchId = batchId;
+public final class EntityIndexEvent extends AsyncEvent {
 
 
+    @JsonProperty
+    protected EntityIdScope entityIdScope;
+
+    @JsonProperty
+    private long updatedAfter;
+
+    public EntityIndexEvent() {
+        super();
     }
 
+    public EntityIndexEvent(String sourceRegion, EntityIdScope entityIdScope, final long updatedAfter ) {
+        super(sourceRegion);
+        this.entityIdScope = entityIdScope;
+        this.updatedAfter = updatedAfter;
+    }
+
+
+    public long getUpdatedAfter() {
+        return updatedAfter;
+    }
+
+
+    public EntityIdScope getEntityIdScope() {
+        return entityIdScope;
+    }
 }

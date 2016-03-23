@@ -186,11 +186,8 @@ public class MapToEntityConverter{
                         "Latitude and longitude must be doubles (e.g. 32.1234).");
                 }
             } else if (m.containsKey("lat") && m.containsKey("lon")) {
-
-                if(logger.isDebugEnabled()){
-                    logger.debug("Entity contains latitude and longitude in old format location{lat,long}");
-                }
-
+                logger.warn("Entity contains latitude and longitude in old format location{lat,long}"
+                );
                 try {
                     latVal = Double.parseDouble(m.get("lat").toString());
                     lonVal = Double.parseDouble(m.get("lon").toString());
@@ -205,13 +202,10 @@ public class MapToEntityConverter{
 
            return new LocationField(fieldName, new Location(latVal, lonVal));
         } else {
-
-            if(logger.isDebugEnabled()){
-                logger.debug(
-                    "entity cannot process location values that don't have valid " +
-                        "location{latitude,longitude} values, changing to generic object");
-            }
-
+            //can't process non enties
+            logger.warn(
+                "entity cannot process location values that don't have valid location{latitude,longitude} values, changing to generic object"
+            );
            return new EntityObjectField(fieldName,fromMap( value, false)); // recursion
         }
     }

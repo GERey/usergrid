@@ -72,9 +72,7 @@ module.exports = {
 
             payloads: {
                 gcm: "Usergrid Integration Push Test - GCM"
-            },
-            debug: true,
-            priority: 'high'
+            }
         };
 
 
@@ -99,9 +97,8 @@ module.exports = {
 
         describe("users", function () {
             it("should create some users", function (done) {
-                this.slow(5000);
-
-                async.eachSeries(usersArray, function (user, cb) {
+                this.slow(2000);
+                async.each(usersArray, function (user, cb) {
                     users.add(user, function (err, user) {
                         should(err).be.null;
                         user.should.not.be.null;
@@ -109,13 +106,7 @@ module.exports = {
                     });
                 }, function (err) {
 
-                    setTimeout(function() {
-
-                        // wait a second before proceeding
-                        done();
-
-                    }, 1000);
-
+                    done();
 
                 });
 
@@ -126,7 +117,7 @@ module.exports = {
 
         describe("devices", function () {
             it("should create some devices", function (done) {
-                this.slow(5000);
+                this.slow(2000);
                 async.each(devicesArray, function (device, cb) {
                     devices.add(device, function (err, device) {
                         should(err).be.null;
@@ -136,12 +127,7 @@ module.exports = {
 
                 }, function (err) {
 
-                    setTimeout(function() {
-
-                        // wait a second before proceeding
-                        done();
-
-                    }, 1000);
+                    done()
 
                 });
 
@@ -163,12 +149,7 @@ module.exports = {
                     if (err) {
                         console.log("error adding users " + err);
                     }
-                    setTimeout(function() {
-
-                        // wait a second before proceeding
-                        done();
-
-                    }, 1000);
+                    done();
                 });
 
             })
@@ -178,7 +159,7 @@ module.exports = {
 
         describe("groups", function () {
             it("should create some groups", function (done) {
-                this.slow(5000);
+                this.slow(2000);
                 var group1 = {
                     path: "notificationgroup1"
                 };
@@ -210,12 +191,7 @@ module.exports = {
                     }
                 ], function (err, results) {
 
-                    setTimeout(function() {
-
-                        // wait a second before proceeding
-                        done();
-
-                    }, 1000);
+                    done();
 
                 });
 
@@ -227,7 +203,7 @@ module.exports = {
 
         describe("groups<->users", function () {
             it("should connect users to groups", function (done) {
-                this.slow(5000);
+                this.slow(2000);
                 async.each(usersArray, function (user, cb) {
 
                     async.series([
@@ -253,12 +229,7 @@ module.exports = {
                     });
 
                 }, function (err) {
-                    setTimeout(function() {
-
-                        // wait a second before proceeding
-                        done();
-
-                    }, 1000);
+                    done();
                 });
 
             })
@@ -274,21 +245,16 @@ module.exports = {
                 this.slow(5000);
                 setTimeout(function () {
 
-                    notifications.send("users/" + usersArray[0].username, gcmNotification,
+                    notifications.send("users/" + usersArray[1].username, gcmNotification,
                         function (err, notification) {
                             should(err).be.null;
                             notification.should.not.be.null;
                             notification.expectedCount.should.be.equal(1);
-                            setTimeout(function() {
-
-                                // wait a second before proceeding
-                                done();
-
-                            }, 2000);
+                            done();
 
                     });
 
-                }, 1500)
+                }, 1000)
 
 
             })
@@ -307,16 +273,11 @@ module.exports = {
                             should(err).be.null;
                             notification.should.not.be.null;
                             notification.expectedCount.should.be.equal(1);
-                            setTimeout(function() {
-
-                                // wait a second before proceeding
-                                done();
-
-                            }, 2000);
+                            done();
 
                     });
 
-                }, 1500);
+                }, 1000);
 
 
             })
@@ -337,16 +298,11 @@ module.exports = {
                             // we set up 2 groups of the same 5 users.  if duplicate filtering is working,
                             // we'll only have 5 expected
                             notification.expectedCount.should.be.equal(5);
-                        setTimeout(function() {
-
-                            // wait a second before proceeding
                             done();
-
-                        }, 2000);
 
                     });
 
-                }, 1500);
+                }, 1000);
 
             })
 

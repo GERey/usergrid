@@ -124,13 +124,7 @@ public class TaskManager {
     * passed one w/ the UUID
     */
     private void saveReceipt(EntityRef notification, EntityRef device, Receipt receipt, boolean hasError) throws Exception {
-
-        boolean debug = false;
-        if(this.notification != null){
-            debug = this.notification.getDebug();
-        }
-
-        if ( debug || hasError) {
+        if (this.notification.getDebug() || hasError) {
             if (receipt.getUuid() == null) {
                 Receipt savedReceipt = em.create(receipt);
                 receipt.setUuid(savedReceipt.getUuid());

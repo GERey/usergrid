@@ -28,7 +28,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 
-import com.amazonaws.ClientConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +87,6 @@ public class SNSQueueManagerImpl implements QueueManager {
     private final QueueFig fig;
     private final ClusterFig clusterFig;
     private final CassandraFig cassandraFig;
-    private final ClientConfiguration clientConfiguration;
     private final AmazonSQSClient sqs;
     private final AmazonSNSClient sns;
     private final AmazonSNSAsyncClient snsAsync;
@@ -97,8 +95,6 @@ public class SNSQueueManagerImpl implements QueueManager {
 
     private static final JsonFactory JSON_FACTORY = new JsonFactory();
     private static final ObjectMapper mapper = new ObjectMapper( JSON_FACTORY );
-    private static final int MIN_CLIENT_SOCKET_TIMEOUT = 5000; // millis
-    private static final int MIN_VISIBILITY_TIMEOUT = 1; //seconds
 
     static {
 
@@ -168,12 +164,6 @@ public class SNSQueueManagerImpl implements QueueManager {
 
 
         final Region region = getRegion();
-
-        this.clientConfiguration = new ClientConfiguration()
-            .withConnectionTimeout(queueFig.getQueueClientConnectionTimeout())
-            // don't let the socket timeout be configured less than 5 sec (network delays do happen)
-            .withSocketTimeout(Math.max(MIN_CLIENT_SOCKET_TIMEOUT, queueFig.getQueueClientSocketTimeout()))
-            .withGzip(true);
 
         try {
             sqs = createSQSClient( region );
@@ -339,10 +329,10 @@ public class SNSQueueManagerImpl implements QueueManager {
      */
 
     private AmazonSNSAsyncClient createAsyncSNSClient( final Region region, final ExecutorService executor ) {
-
         final UsergridAwsCredentialsProvider ugProvider = new UsergridAwsCredentialsProvider();
-        final AmazonSNSAsyncClient sns =
-            new AmazonSNSAsyncClient( ugProvider.getCredentials(), clientConfiguration, executor );
+
+
+        final AmazonSNSAsyncClient sns = new AmazonSNSAsyncClient( ugProvider.getCredentials(), executor );
 
         sns.setRegion( region );
 
@@ -354,10 +344,9 @@ public class SNSQueueManagerImpl implements QueueManager {
      * Create the async sqs client
      */
     private AmazonSQSAsyncClient createAsyncSQSClient( final Region region, final ExecutorService executor ) {
-
         final UsergridAwsCredentialsProvider ugProvider = new UsergridAwsCredentialsProvider();
-        final AmazonSQSAsyncClient sqs =
-            new AmazonSQSAsyncClient( ugProvider.getCredentials(),clientConfiguration,  executor );
+
+        final AmazonSQSAsyncClient sqs = new AmazonSQSAsyncClient( ugProvider.getCredentials(), executor );
 
         sqs.setRegion( region );
 
@@ -369,10 +358,9 @@ public class SNSQueueManagerImpl implements QueueManager {
      * The Synchronous SNS client is used for creating topics and subscribing queues.
      */
     private AmazonSNSClient createSNSClient( final Region region ) {
-
         final UsergridAwsCredentialsProvider ugProvider = new UsergridAwsCredentialsProvider();
-        final AmazonSNSClient sns =
-            new AmazonSNSClient( ugProvider.getCredentials(), clientConfiguration );
+
+        final AmazonSNSClient sns = new AmazonSNSClient( ugProvider.getCredentials() );
 
         sns.setRegion( region );
 
@@ -414,7 +402,8 @@ public class SNSQueueManagerImpl implements QueueManager {
 
 
     @Override
-    public List<QueueMessage> getMessages(final int limit, final Class klass) {
+    public List<QueueMessage> getMessages( final int limit, final int transactionTimeout, final int waitTime,
+                                                    final Class klass ) {
 
         if ( sqs == null ) {
             logger.error( "SQS is null - was not initialized properly" );
@@ -427,19 +416,10 @@ public class SNSQueueManagerImpl implements QueueManager {
             logger.trace( "Getting up to {} messages from {}", limit, url );
         }
 
-        ArrayList<String> requestMessageAttributeNames = new ArrayList<String>(1);
-        requestMessageAttributeNames.add("ApproximateReceiveCount");
-
-
         ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest( url );
-        receiveMessageRequest.setAttributeNames(requestMessageAttributeNames);
         receiveMessageRequest.setMaxNumberOfMessages( limit );
-        receiveMessageRequest.setVisibilityTimeout(
-            Math.max( MIN_VISIBILITY_TIMEOUT, fig.getVisibilityTimeout() / 1000 ) );
-
-        // set SQS long polling to 3 secs < the client socket timeout (network delays) with min of 0 (no long poll)
-        receiveMessageRequest.setWaitTimeSeconds(
-            Math.max(0, ( fig.getQueueClientSocketTimeout() - fig.getQueuePollTimeshift() ) / 1000 ) );
+        receiveMessageRequest.setVisibilityTimeout( Math.max( 1, transactionTimeout / 1000 ) );
+        receiveMessageRequest.setWaitTimeSeconds( waitTime / 1000 );
 
         try {
             ReceiveMessageResult result = sqs.receiveMessage( receiveMessageRequest );
@@ -482,8 +462,6 @@ public class SNSQueueManagerImpl implements QueueManager {
                 QueueMessage queueMessage = new QueueMessage( message.getMessageId(), message.getReceiptHandle(), payload,
                     message.getAttributes().get( "type" ) );
                 queueMessage.setStringBody( originalBody );
-                int receiveCount = Integer.valueOf(message.getAttributes().get("ApproximateReceiveCount"));
-                queueMessage.setReceiveCount( receiveCount );
                 queueMessages.add( queueMessage );
             }
 
@@ -685,10 +663,8 @@ public class SNSQueueManagerImpl implements QueueManager {
      * Create the SQS client for the specified settings
      */
     private AmazonSQSClient createSQSClient( final Region region ) {
-
         final UsergridAwsCredentialsProvider ugProvider = new UsergridAwsCredentialsProvider();
-        final AmazonSQSClient sqs =
-            new AmazonSQSClient( ugProvider.getCredentials(), clientConfiguration );
+        final AmazonSQSClient sqs = new AmazonSQSClient( ugProvider.getCredentials() );
 
         sqs.setRegion( region );
 

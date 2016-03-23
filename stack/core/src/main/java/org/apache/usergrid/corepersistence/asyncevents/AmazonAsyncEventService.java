@@ -29,13 +29,16 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.usergrid.persistence.index.impl.*;
+import org.elasticsearch.action.index.IndexRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.usergrid.corepersistence.asyncevents.model.AsyncEvent;
 import org.apache.usergrid.corepersistence.asyncevents.model.EdgeDeleteEvent;
+import org.apache.usergrid.corepersistence.asyncevents.model.EdgeIndexEvent;
 import org.apache.usergrid.corepersistence.asyncevents.model.ElasticsearchIndexEvent;
 import org.apache.usergrid.corepersistence.asyncevents.model.EntityDeleteEvent;
+import org.apache.usergrid.corepersistence.asyncevents.model.EntityIndexEvent;
 import org.apache.usergrid.corepersistence.asyncevents.model.InitializeApplicationIndexEvent;
 import org.apache.usergrid.corepersistence.index.EntityIndexOperation;
 import org.apache.usergrid.corepersistence.index.IndexLocationStrategyFactory;
@@ -99,10 +102,10 @@ import rx.schedulers.Schedulers;
  *
  */
 @Singleton
-public class AsyncEventServiceImpl implements AsyncEventService {
+public class AmazonAsyncEventService implements AsyncEventService {
 
 
-    private static final Logger logger = LoggerFactory.getLogger(AsyncEventServiceImpl.class);
+    private static final Logger logger = LoggerFactory.getLogger(AmazonAsyncEventService.class);
 
     // SQS maximum receive messages is 10
     public int MAX_TAKE = 10;
@@ -138,17 +141,17 @@ public class AsyncEventServiceImpl implements AsyncEventService {
 
 
     @Inject
-    public AsyncEventServiceImpl(final QueueManagerFactory queueManagerFactory,
-                                 final IndexProcessorFig indexProcessorFig,
-                                 final IndexProducer indexProducer,
-                                 final MetricsFactory metricsFactory,
-                                 final EntityCollectionManagerFactory entityCollectionManagerFactory,
-                                 final IndexLocationStrategyFactory indexLocationStrategyFactory,
-                                 final EntityIndexFactory entityIndexFactory,
-                                 final EventBuilder eventBuilder,
-                                 final MapManagerFactory mapManagerFactory,
-                                 final QueueFig queueFig,
-                                 @EventExecutionScheduler
+    public AmazonAsyncEventService( final QueueManagerFactory queueManagerFactory,
+                                    final IndexProcessorFig indexProcessorFig,
+                                    final IndexProducer indexProducer,
+                                    final MetricsFactory metricsFactory,
+                                    final EntityCollectionManagerFactory entityCollectionManagerFactory,
+                                    final IndexLocationStrategyFactory indexLocationStrategyFactory,
+                                    final EntityIndexFactory entityIndexFactory,
+                                    final EventBuilder eventBuilder,
+                                    final MapManagerFactory mapManagerFactory,
+                                    final QueueFig queueFig,
+                                    @EventExecutionScheduler
                                     final RxTaskScheduler rxTaskScheduler ) {
         this.indexProducer = indexProducer;
 
@@ -169,15 +172,15 @@ public class AsyncEventServiceImpl implements AsyncEventService {
         this.indexProcessorFig = indexProcessorFig;
         this.queueFig = queueFig;
 
-        this.writeTimer = metricsFactory.getTimer(AsyncEventServiceImpl.class, "async_event.write");
-        this.readTimer = metricsFactory.getTimer(AsyncEventServiceImpl.class, "async_event.read");
-        this.ackTimer = metricsFactory.getTimer(AsyncEventServiceImpl.class, "async_event.ack");
-        this.indexErrorCounter = metricsFactory.getCounter(AsyncEventServiceImpl.class, "async_event.error");
-        this.messageCycle = metricsFactory.getHistogram(AsyncEventServiceImpl.class, "async_event.message_cycle");
+        this.writeTimer = metricsFactory.getTimer(AmazonAsyncEventService.class, "async_event.write");
+        this.readTimer = metricsFactory.getTimer(AmazonAsyncEventService.class, "async_event.read");
+        this.ackTimer = metricsFactory.getTimer(AmazonAsyncEventService.class, "async_event.ack");
+        this.indexErrorCounter = metricsFactory.getCounter(AmazonAsyncEventService.class, "async_event.error");
+        this.messageCycle = metricsFactory.getHistogram(AmazonAsyncEventService.class, "async_event.message_cycle");
 
 
         //wire up the gauge of inflight message
-        metricsFactory.addGauge(AsyncEventServiceImpl.class, "async-event.inflight", new Gauge<Long>() {
+        metricsFactory.addGauge(AmazonAsyncEventService.class, "async-event.inflight", new Gauge<Long>() {
             @Override
             public Long getValue() {
                 return inFlight.longValue();
@@ -242,10 +245,13 @@ public class AsyncEventServiceImpl implements AsyncEventService {
         final Timer.Context timer = this.readTimer.time();
 
         try {
-            return queue.getMessages(MAX_TAKE, AsyncEvent.class);
+            return queue.getMessages(MAX_TAKE,
+                    indexProcessorFig.getIndexQueueVisibilityTimeout(),
+                    indexProcessorFig.getIndexQueueTimeout(),
+                    AsyncEvent.class);
         }
+        //stop our timer
         finally {
-            //stop our timer
             timer.stop();
         }
     }
@@ -282,85 +288,79 @@ public class AsyncEventServiceImpl implements AsyncEventService {
     private List<IndexEventResult> callEventHandlers(final List<QueueMessage> messages) {
 
         if (logger.isDebugEnabled()) {
-            logger.debug("callEventHandlers with {} message(s)", messages.size());
+            logger.debug("callEventHandlers with {} message", messages.size());
         }
 
-        Stream<IndexEventResult> indexEventResults = messages.stream().map(message ->
-
-        {
-            if(logger.isDebugEnabled()){
-                logger.debug("Queue message with ID {} has been received {} time(s)",
-                    message.getMessageId(),
-                    message.getReceiveCount() );
-            }
-
+        Stream<IndexEventResult> indexEventResults = messages.stream().map(message -> {
             AsyncEvent event = null;
             try {
                 event = (AsyncEvent) message.getBody();
-
             } catch (ClassCastException cce) {
                 logger.error("Failed to deserialize message body", cce);
-                return new IndexEventResult(Optional.absent(), Optional.absent(), System.currentTimeMillis());
             }
 
             if (event == null) {
                 logger.error("AsyncEvent type or event is null!");
-                return new IndexEventResult(Optional.absent(), Optional.absent(), System.currentTimeMillis());
+                return new IndexEventResult(Optional.fromNullable(message), Optional.<IndexOperationMessage>absent(),
+                    System.currentTimeMillis());
             }
 
             final AsyncEvent thisEvent = event;
 
             if (logger.isDebugEnabled()) {
-                logger.debug("Processing event with type {}", event.getClass().getSimpleName());
+                logger.debug("Processing {} event", event);
             }
 
-            IndexOperationMessage indexOperationMessage = null;
             try {
-
-                // deletes are 2-part, actual IO to delete data, then queue up a de-index
+                //check for empty sets if this is true
+                boolean validateEmptySets = true;
+                Observable<IndexOperationMessage> indexoperationObservable;
+                //merge each operation to a master observable;
                 if ( event instanceof EdgeDeleteEvent ) {
-
-                    handleEdgeDelete( message );
+                    indexoperationObservable = handleEdgeDelete( message );
                 }
-                // deletes are 2-part, actual IO to delete data, then queue up a de-index
+                else if ( event instanceof EdgeIndexEvent ) {
+                    indexoperationObservable = handleEdgeIndex( message );
+                }
                 else if ( event instanceof EntityDeleteEvent ) {
+                    indexoperationObservable = handleEntityDelete( message );
+                    validateEmptySets = false; // do not check this one for an empty set b/c it can be empty
 
-                    handleEntityDelete( message );
                 }
-                // application initialization has special logic, therefore a special event type
+                else if ( event instanceof EntityIndexEvent ) {
+                    indexoperationObservable = handleEntityIndexUpdate( message );
+                }
                 else if ( event instanceof InitializeApplicationIndexEvent ) {
-
+                    //does not return observable
                     handleInitializeApplicationIndex(event, message);
-                }
-                // this is the main event that pulls the index doc from map persistence and hands to the index producer
-                else if (event instanceof ElasticsearchIndexEvent) {
-
-                    indexOperationMessage = handleIndexOperation((ElasticsearchIndexEvent) event);
-
+                    indexoperationObservable = Observable.just(new IndexOperationMessage());
+                    validateEmptySets = false; //do not check this one for an empty set b/c it will be empty.
+                } else if (event instanceof ElasticsearchIndexEvent) {
+                    handleIndexOperation((ElasticsearchIndexEvent) event);
+                    indexoperationObservable = Observable.just(new IndexOperationMessage());
+                    validateEmptySets = false; //do not check this one for an empty set b/c it will be empty.
                 } else {
-
-                    throw new Exception("Unknown EventType for message: "+ message.getStringBody().trim());
+                    throw new Exception("Unknown EventType");//TODO: print json instead
                 }
 
+                //collect all of the
+                IndexOperationMessage indexOperationMessage = indexoperationObservable
+                    .collect(() -> new IndexOperationMessage(), (collector, single) -> collector.ingest(single))
+                    .toBlocking().lastOrDefault(null);
 
-                // returning indexOperationMessage will send that indexOperationMessage to the index producer
-                // if no exception happens and the QueueMessage is returned in these results, it will get ack'd
-                return new IndexEventResult(Optional.fromNullable(indexOperationMessage), Optional.of(message), thisEvent.getCreationTime());
-
-            } catch (IndexDocNotFoundException e){
-
-                // this exception is throw when we wait before trying quorum read on map persistence.
-                // return empty event result so the event's message doesn't get ack'd
-                if(logger.isDebugEnabled()){
-                    logger.debug(e.getMessage());
+                if (validateEmptySets && (indexOperationMessage == null || indexOperationMessage.isEmpty())) {
+                    logger.error("Received empty index sequence message:({}), body:({}) ", message.getMessageId(),
+                        message.getStringBody());
+                    throw new Exception("Received empty index sequence.");
                 }
-                return new IndexEventResult(Optional.absent(), Optional.absent(), event.getCreationTime());
 
+                //return type that can be indexed and ack'd later
+                return new IndexEventResult(Optional.fromNullable(message),
+                    Optional.fromNullable(indexOperationMessage), thisEvent.getCreationTime());
             } catch (Exception e) {
-
-                // if the event fails to process, log and return empty message result so it doesn't get ack'd
-                logger.error("{}. Failed to process message: {}", e.getMessage(), message.getStringBody().trim() );
-                return new IndexEventResult(Optional.absent(), Optional.absent(), event.getCreationTime());
+                logger.error("Failed to index message: {} {}", message.getMessageId(), message.getStringBody(), e);
+                return new IndexEventResult(Optional.absent(), Optional.<IndexOperationMessage>absent(),
+                    event.getCreationTime());
             }
         });
 
@@ -379,17 +379,35 @@ public class AsyncEventServiceImpl implements AsyncEventService {
 
     @Override
     public void queueEntityIndexUpdate(final ApplicationScope applicationScope,
-                                       final Entity entity, long updatedAfter) {
+                                       final Entity entity) {
+
+        offer(new EntityIndexEvent(queueFig.getPrimaryRegion(),new EntityIdScope(applicationScope, entity.getId()), 0));
+    }
 
 
-        final EntityIndexOperation entityIndexOperation =
-            new EntityIndexOperation( applicationScope, entity.getId(), updatedAfter);
+    public Observable<IndexOperationMessage> handleEntityIndexUpdate(final QueueMessage message) {
 
-        final IndexOperationMessage indexMessage =
-            eventBuilder.buildEntityIndex( entityIndexOperation ).toBlocking().lastOrDefault(null);
+        Preconditions.checkNotNull( message, "Queue Message cannot be null for handleEntityIndexUpdate" );
 
-        queueIndexOperationMessage( indexMessage );
+        final AsyncEvent event = ( AsyncEvent ) message.getBody();
 
+        Preconditions.checkNotNull(message, "QueueMessage Body cannot be null for handleEntityIndexUpdate");
+        Preconditions.checkArgument(event instanceof EntityIndexEvent, String.format("Event Type for handleEntityIndexUpdate must be ENTITY_INDEX, got %s", event.getClass()));
+
+        final EntityIndexEvent entityIndexEvent = (EntityIndexEvent) event;
+
+
+        //process the entity immediately
+        //only process the same version, otherwise ignore
+        final EntityIdScope entityIdScope = entityIndexEvent.getEntityIdScope();
+        final ApplicationScope applicationScope = entityIdScope.getApplicationScope();
+        final Id entityId = entityIdScope.getId();
+        final long updatedAfter = entityIndexEvent.getUpdatedAfter();
+
+        final EntityIndexOperation entityIndexOperation = new EntityIndexOperation( applicationScope, entityId, updatedAfter);
+
+        final Observable<IndexOperationMessage> observable = eventBuilder.buildEntityIndex( entityIndexOperation );
+        return observable;
     }
 
 
@@ -398,26 +416,42 @@ public class AsyncEventServiceImpl implements AsyncEventService {
                              final Entity entity,
                              final Edge newEdge) {
 
-        final EntityCollectionManager ecm = entityCollectionManagerFactory.createCollectionManager( applicationScope );
+        EdgeIndexEvent operation = new EdgeIndexEvent(queueFig.getPrimaryRegion(), applicationScope, entity.getId(), newEdge);
 
-        final IndexOperationMessage indexMessage = ecm.load( entity.getId() )
-            .flatMap( loadedEntity -> eventBuilder.buildNewEdge(applicationScope, entity, newEdge) )
-            .toBlocking().lastOrDefault(null);
-
-        queueIndexOperationMessage( indexMessage );
-
+        offer( operation );
     }
 
+    public Observable<IndexOperationMessage> handleEdgeIndex(final QueueMessage message) {
+
+        Preconditions.checkNotNull( message, "Queue Message cannot be null for handleEdgeIndex" );
+
+        final AsyncEvent event = (AsyncEvent) message.getBody();
+
+        Preconditions.checkNotNull( message, "QueueMessage Body cannot be null for handleEdgeIndex" );
+        Preconditions.checkArgument(event instanceof EdgeIndexEvent, String.format("Event Type for handleEdgeIndex must be EDGE_INDEX, got %s", event.getClass()));
+
+        final EdgeIndexEvent edgeIndexEvent = ( EdgeIndexEvent ) event;
+
+        final ApplicationScope applicationScope = edgeIndexEvent.getApplicationScope();
+        final Edge edge = edgeIndexEvent.getEdge();
+
+
+
+        final EntityCollectionManager ecm = entityCollectionManagerFactory.createCollectionManager( applicationScope );
+
+        final Observable<IndexOperationMessage> edgeIndexObservable = ecm.load( edgeIndexEvent.getEntityId() ).flatMap(
+            entity -> eventBuilder.buildNewEdge(applicationScope, entity, edge));
+        return edgeIndexObservable;
+    }
 
     @Override
     public void queueDeleteEdge(final ApplicationScope applicationScope,
                                 final Edge edge) {
 
-        // sent in region (not offerTopic) as the delete IO happens in-region, then queues a multi-region de-index op
         offer( new EdgeDeleteEvent( queueFig.getPrimaryRegion(), applicationScope, edge ) );
     }
 
-    public void handleEdgeDelete(final QueueMessage message) {
+    public Observable<IndexOperationMessage> handleEdgeDelete(final QueueMessage message) {
 
         Preconditions.checkNotNull( message, "Queue Message cannot be null for handleEdgeDelete" );
 
@@ -436,13 +470,15 @@ public class AsyncEventServiceImpl implements AsyncEventService {
             logger.debug("Deleting in app scope {} with edge {}", applicationScope, edge);
         }
 
-        IndexOperationMessage indexMessage =
-            eventBuilder.buildDeleteEdge(applicationScope, edge).toBlocking().lastOrDefault(null);
-
-        queueIndexOperationMessage(indexMessage);
-
+        return eventBuilder.buildDeleteEdge(applicationScope, edge);
     }
 
+
+    @Override
+    public void queueEntityDelete(final ApplicationScope applicationScope, final Id entityId) {
+
+        offer( new EntityDeleteEvent(queueFig.getPrimaryRegion(), new EntityIdScope( applicationScope, entityId ) ) );
+    }
 
 
     /**
@@ -452,7 +488,7 @@ public class AsyncEventServiceImpl implements AsyncEventService {
     public void queueIndexOperationMessage( final IndexOperationMessage indexOperationMessage ) {
 
         // don't try to produce something with nothing
-        if(indexOperationMessage == null || indexOperationMessage.isEmpty()){
+        if(indexOperationMessage.isEmpty()){
             return;
         }
 
@@ -478,51 +514,52 @@ public class AsyncEventServiceImpl implements AsyncEventService {
         offerTopic( elasticsearchIndexEvent );
     }
 
-    public IndexOperationMessage handleIndexOperation(final ElasticsearchIndexEvent elasticsearchIndexEvent){
-
-        Preconditions.checkNotNull( elasticsearchIndexEvent, "elasticsearchIndexEvent cannot be null" );
+    public void handleIndexOperation(final ElasticsearchIndexEvent elasticsearchIndexEvent){
+         Preconditions.checkNotNull( elasticsearchIndexEvent, "elasticsearchIndexEvent cannot be null" );
 
         final UUID messageId = elasticsearchIndexEvent.getIndexBatchId();
+
         Preconditions.checkNotNull( messageId, "messageId must not be null" );
 
 
+        //load the entity
+
         final String message = esMapPersistence.getString( messageId.toString() );
 
-
         final IndexOperationMessage indexOperationMessage;
-        if(message == null) {
 
-            // provide some time back pressure before performing a quorum read
-            if ( System.currentTimeMillis() > elasticsearchIndexEvent.getCreationTime() + queueFig.getLocalQuorumTimeout() ) {
+        if(message == null){
+            logger.warn( "Received message with id {} to process, unable to find it, reading with higher consistency level",
+                messageId);
 
-                if(logger.isDebugEnabled()){
-                    logger.debug("ES batch with id {} not found, reading with strong consistency", messageId);
-                }
+            final String highConsistency =  esMapPersistence.getStringHighConsistency( messageId.toString() );
 
-                final String highConsistency = esMapPersistence.getStringHighConsistency(messageId.toString());
-                if (highConsistency == null) {
+            if(highConsistency == null){
+                logger.error( "Unable to find the ES batch with id {} to process at a higher consistency level",
+                    messageId);
 
-                   throw new RuntimeException("ES batch with id "+messageId+" not found when reading with strong consistency");
-               }
+                throw new RuntimeException( "Unable to find the ES batch to process with message id " + messageId );
+            }
 
-               indexOperationMessage = ObjectJsonSerializer.INSTANCE.fromString(highConsistency, IndexOperationMessage.class);
+            indexOperationMessage = ObjectJsonSerializer.INSTANCE.fromString( highConsistency, IndexOperationMessage.class );
 
-           } else {
-
-               throw new IndexDocNotFoundException(elasticsearchIndexEvent.getIndexBatchId());
-
-           }
-
-        } else {
-
+        } else{
             indexOperationMessage = ObjectJsonSerializer.INSTANCE.fromString( message, IndexOperationMessage.class );
         }
 
-
-        // always do a check to ensure the indexes are initialized for the index requests
         initializeEntityIndexes(indexOperationMessage);
 
-        return indexOperationMessage;
+        //NOTE that we intentionally do NOT delete from the map.  We can't know when all regions have consumed the message
+        //so we'll let compaction on column expiration handle deletion
+
+        //read the value from the string
+
+        Preconditions.checkNotNull( indexOperationMessage, "indexOperationMessage cannot be null" );
+        Preconditions.checkArgument( !indexOperationMessage.isEmpty() , "queued indexOperationMessage messages should not be empty" );
+
+
+        //now execute it
+        indexProducer.put(indexOperationMessage).toBlocking().last();
 
     }
 
@@ -562,14 +599,7 @@ public class AsyncEventServiceImpl implements AsyncEventService {
         return queue.getQueueDepth();
     }
 
-    @Override
-    public void queueEntityDelete(final ApplicationScope applicationScope, final Id entityId) {
-
-        // sent in region (not offerTopic) as the delete IO happens in-region, then queues a multi-region de-index op
-        offer( new EntityDeleteEvent(queueFig.getPrimaryRegion(), new EntityIdScope( applicationScope, entityId ) ) );
-    }
-
-    public void handleEntityDelete(final QueueMessage message) {
+    public Observable<IndexOperationMessage> handleEntityDelete(final QueueMessage message) {
 
         Preconditions.checkNotNull(message, "Queue Message cannot be null for handleEntityDelete");
 
@@ -595,10 +625,7 @@ public class AsyncEventServiceImpl implements AsyncEventService {
 
         entityDeleteResults.getCompactedNode().toBlocking().lastOrDefault(null);
 
-        IndexOperationMessage indexMessage = entityDeleteResults.getIndexObservable().toBlocking().lastOrDefault(null);
-
-        queueIndexOperationMessage(indexMessage);
-
+        return entityDeleteResults.getIndexObservable();
     }
 
 
@@ -692,31 +719,30 @@ public class AsyncEventServiceImpl implements AsyncEventService {
 
                                              .map( messages -> {
                                                  if ( messages == null || messages.size() == 0 ) {
-                                                     // no messages came from the queue, move on
                                                      return null;
                                                  }
 
                                                  try {
-                                                     // process the messages
-                                                     List<IndexEventResult> indexEventResults = callEventHandlers( messages );
-
-                                                     // submit the processed messages to index producer
-                                                     List<QueueMessage> messagesToAck = submitToIndex( indexEventResults );
-
+                                                     List<IndexEventResult> indexEventResults =
+                                                         callEventHandlers( messages );
+                                                     List<QueueMessage> messagesToAck =
+                                                         submitToIndex( indexEventResults );
+                                                     if ( messagesToAck == null || messagesToAck.size() == 0 ) {
+                                                         logger.error(
+                                                             "No messages came back from the queue operation, should have seen {} messages",
+                                                                 messages.size() );
+                                                         return messagesToAck;
+                                                     }
                                                      if ( messagesToAck.size() < messages.size() ) {
-                                                         logger.warn( "Missing {} message(s) from index processing",
-                                                            messages.size() - messagesToAck.size() );
+                                                         logger.error( "Missing messages from queue post operation",
+                                                             messages, messagesToAck );
                                                      }
-
-                                                     // ack each message if making it to this point
-                                                     if( messagesToAck.size() > 0 ){
-                                                         ack( messagesToAck );
-                                                     }
-
+                                                     //ack each message, but only if we didn't error.
+                                                     ack( messagesToAck );
                                                      return messagesToAck;
                                                  }
                                                  catch ( Exception e ) {
-                                                     logger.error( "Failed to ack messages", e );
+                                                     logger.error( "failed to ack messages to sqs", e );
                                                      return null;
                                                      //do not rethrow so we can process all of them
                                                  }
@@ -737,98 +763,81 @@ public class AsyncEventServiceImpl implements AsyncEventService {
      * @param indexEventResults
      * @return
      */
-    private List<QueueMessage> submitToIndex(List<IndexEventResult> indexEventResults) {
-
-        // if nothing came back then return null
+    private List<QueueMessage> submitToIndex( List<IndexEventResult> indexEventResults) {
+        //if nothing came back then return null
         if(indexEventResults==null){
             return null;
         }
 
-        IndexOperationMessage combined = new IndexOperationMessage();
-        List<QueueMessage> queueMessages = indexEventResults.stream()
+        final IndexOperationMessage combined = new IndexOperationMessage();
 
-            // filter out messages that are not present, they were not processed and put into the results
-            .filter( result -> result.getQueueMessage().isPresent() )
+        //stream and filer the messages
+        List<QueueMessage> messagesToAck = indexEventResults.stream()
             .map(indexEventResult -> {
-
-                //record the cycle time
-                messageCycle.update(System.currentTimeMillis() - indexEventResult.getCreationTime());
-
-                // ingest each index op into our combined, single index op for the index producer
-                if(indexEventResult.getIndexOperationMessage().isPresent()){
+                //collect into the index submission
+                if (indexEventResult.getIndexOperationMessage().isPresent()) {
                     combined.ingest(indexEventResult.getIndexOperationMessage().get());
                 }
-
-                return indexEventResult.getQueueMessage().get();
+                return indexEventResult;
             })
-            // collect into a list of QueueMessages that can be ack'd later
+                //filter out the ones that need to be ack'd
+            .filter(indexEventResult -> indexEventResult.getQueueMessage().isPresent())
+            .map(indexEventResult -> {
+                //record the cycle time
+                messageCycle.update(System.currentTimeMillis() - indexEventResult.getCreationTime());
+                return indexEventResult;
+            })
+                //ack after successful completion of the operation.
+            .map(result -> result.getQueueMessage().get())
             .collect(Collectors.toList());
 
-        // sumbit the requests to Elasticsearch
-        indexProducer.put(combined).toBlocking().last();
+            queueIndexOperationMessage( combined );
 
-        return queueMessages;
+        return messagesToAck;
     }
 
     public void index(final ApplicationScope applicationScope, final Id id, final long updatedSince) {
-
-        EntityIndexOperation entityIndexOperation =
-            new EntityIndexOperation( applicationScope, id, updatedSince);
-
-        queueIndexOperationMessage(eventBuilder.buildEntityIndex( entityIndexOperation ).toBlocking().lastOrDefault(null));
+        //change to id scope to avoid serialization issues
+        offer( new EntityIndexEvent(queueFig.getPrimaryRegion(), new EntityIdScope( applicationScope, id ), updatedSince ) );
     }
 
     public void indexBatch(final List<EdgeScope> edges, final long updatedSince) {
 
-        IndexOperationMessage batch = new IndexOperationMessage();
-
+        List batch = new ArrayList<EdgeScope>();
         for ( EdgeScope e : edges){
-
-            EntityIndexOperation entityIndexOperation =
-                new EntityIndexOperation( e.getApplicationScope(), e.getEdge().getTargetNode(), updatedSince);
-
-            IndexOperationMessage indexOperationMessage =
-                eventBuilder.buildEntityIndex( entityIndexOperation ).toBlocking().lastOrDefault(null);
-
-            if (indexOperationMessage != null){
-                batch.ingest(indexOperationMessage);
-            }
-
+            //change to id scope to avoid serialization issues
+            batch.add(new EntityIndexEvent(queueFig.getPrimaryRegion(), new EntityIdScope(e.getApplicationScope(), e.getEdge().getTargetNode()), updatedSince));
         }
-
-        queueIndexOperationMessage(batch);
+        offerBatch( batch );
     }
 
 
     public class IndexEventResult{
-        private final Optional<IndexOperationMessage> indexOperationMessage;
         private final Optional<QueueMessage> queueMessage;
+        private final Optional<IndexOperationMessage> indexOperationMessage;
         private final long creationTime;
 
-        public IndexEventResult(Optional<IndexOperationMessage> indexOperationMessage, Optional<QueueMessage> queueMessage, long creationTime){
+
+        public IndexEventResult(Optional<QueueMessage> queueMessage, Optional<IndexOperationMessage> indexOperationMessage, long creationTime){
 
             this.queueMessage = queueMessage;
-            this.creationTime = creationTime;
             this.indexOperationMessage = indexOperationMessage;
+
+            this.creationTime = creationTime;
+        }
+
+
+        public Optional<QueueMessage> getQueueMessage() {
+            return queueMessage;
         }
 
         public Optional<IndexOperationMessage> getIndexOperationMessage() {
             return indexOperationMessage;
         }
 
-        public Optional<QueueMessage> getQueueMessage() {
-            return queueMessage;
-        }
-
         public long getCreationTime() {
             return creationTime;
         }
-    }
-
-    public String getQueueManagerClass() {
-
-        return queue.getClass().getSimpleName();
-
     }
 
 

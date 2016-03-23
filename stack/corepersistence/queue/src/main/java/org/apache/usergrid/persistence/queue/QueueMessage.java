@@ -23,7 +23,6 @@ public class QueueMessage {
     private final String handle;
     private final String type;
     private String stringBody;
-    private int receiveCount;
 
 
     public QueueMessage(String messageId, String handle, Object body,String type) {
@@ -32,7 +31,6 @@ public class QueueMessage {
         this.handle = handle;
         this.type = type;
         this.stringBody = "";
-        this.receiveCount = 1; // we'll always receive once if we're taking it off the in mem or AWS queue
     }
 
     public String getHandle() {
@@ -58,13 +56,5 @@ public class QueueMessage {
 
     public String getStringBody() {
         return stringBody;
-    }
-
-    public void setReceiveCount(int receiveCount){
-        this.receiveCount = receiveCount;
-    }
-
-    public int getReceiveCount(){
-        return receiveCount;
     }
 }

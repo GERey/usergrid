@@ -1476,11 +1476,19 @@ public class ManagementServiceImpl implements ManagementService {
 
     @Override
     public String getAccessTokenForAdminUser( UUID userId, long duration ) throws Exception {
+
         return getTokenForPrincipal( ACCESS, null, smf.getManagementAppId(), ADMIN_USER, userId, duration );
     }
 
 
-  /*
+    @Override
+    public void importTokenForAdminUser(UUID userId, String token, long ttl) throws Exception {
+        tokens.importToken( token, TokenCategory.ACCESS, null,
+                new AuthPrincipalInfo( ADMIN_USER, userId, smf.getManagementAppId() ), null, ttl );
+    }
+
+
+    /*
    * (non-Javadoc)
    *
    * @see
@@ -1668,12 +1676,6 @@ public class ManagementServiceImpl implements ManagementService {
 
     @Override
     public void removeAdminUserFromOrganization( UUID userId, UUID organizationId ) throws Exception {
-        removeAdminUserFromOrganization( userId, organizationId, false );
-    }
-
-
-    @Override
-    public void removeAdminUserFromOrganization( UUID userId, UUID organizationId, boolean force ) throws Exception {
 
         if ( ( userId == null ) || ( organizationId == null ) ) {
             return;
@@ -1682,10 +1684,8 @@ public class ManagementServiceImpl implements ManagementService {
         EntityManager em = emf.getEntityManager( smf.getManagementAppId() );
 
         try {
-            int size = em.getCollection( new SimpleEntityRef( Group.ENTITY_TYPE, organizationId ),
-                    "users", null, 2, Level.IDS, false ).size();
-
-            if ( !force && size <= 1 ) {
+            if ( em.getCollection( new SimpleEntityRef( Group.ENTITY_TYPE, organizationId ), "users", null, 2,
+                    Level.IDS, false ).size() <= 1 ) {
                 throw new Exception();
             }
         }

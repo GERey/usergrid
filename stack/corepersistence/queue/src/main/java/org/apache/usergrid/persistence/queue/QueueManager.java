@@ -17,6 +17,8 @@
  */
 package org.apache.usergrid.persistence.queue;
 
+import rx.Observable;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.List;
@@ -29,10 +31,12 @@ public interface QueueManager {
     /**
      * Read messages from queue
      * @param limit
+     * @param transactionTimeout timeout in seconds
+     * @param waitTime wait time for next message in milliseconds
      * @param klass class to cast the return from
      * @return List of Queue Messages
      */
-    List<QueueMessage> getMessages(int limit, Class klass);
+    List<QueueMessage> getMessages(int limit,int transactionTimeout, int waitTime, Class klass);
 
     /**
      * get the queue depth
