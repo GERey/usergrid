@@ -82,7 +82,9 @@ public class CpSetup implements Setup {
     public void initSubsystems() throws Exception {
         //a no op, creating the injector creates the connections
         //init our index if required
-        this.emf.initializeManagementIndex();
+        if(System.getProperty( "elasticsearch" ).isEmpty() || System.getProperty( "elasticsearch" ).equals( "true" )) {
+            this.emf.initializeManagementIndex();
+        }
         setupStaticKeyspace();
         setupSystemKeyspace();
 

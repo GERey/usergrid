@@ -405,10 +405,12 @@ public class CpRelationManager implements RelationManager {
                 indexService.queueNewEdge( applicationScope, cpHeadEntity, reverseEdge );
             } );
         } ).doOnCompleted( () -> {
-            indexService.queueNewEdge( applicationScope, memberEntity, edge );
-            if ( logger.isDebugEnabled() ) {
-                logger.debug( "Added entity {}:{} to collection {}",
-                    itemRef.getUuid().toString(), itemRef.getType(), collectionName );
+            if(System.getProperty( "elasticsearch" ).isEmpty() || System.getProperty( "elasticsearch" ).equals( "true" )) {
+                indexService.queueNewEdge( applicationScope, memberEntity, edge );
+                if ( logger.isDebugEnabled() ) {
+                    logger.debug( "Added entity {}:{} to collection {}", itemRef.getUuid().toString(), itemRef.getType(),
+                        collectionName );
+                }
             }
         } ).toBlocking().lastOrDefault( null );
 

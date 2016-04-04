@@ -261,8 +261,10 @@ public class CpEntityManagerFactory implements EntityManagerFactory, Application
         }
 
         getSetup().setupApplicationKeyspace( applicationId, appName );
-        appEm.initializeIndex();
-        indexService.queueInitializeApplicationIndex(CpNamingUtils.getApplicationScope(applicationId));
+        if(System.getProperty( "elasticsearch" ).isEmpty() || System.getProperty( "elasticsearch" ).equals( "true" )) {
+            appEm.initializeIndex();
+            indexService.queueInitializeApplicationIndex( CpNamingUtils.getApplicationScope( applicationId ) );
+        }
         if ( properties == null ) {
             properties = new TreeMap<>( CASE_INSENSITIVE_ORDER);
         }
