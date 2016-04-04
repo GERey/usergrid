@@ -23,7 +23,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-import org.apache.usergrid.java.client.exception.ClientException;
 import org.apache.usergrid.rest.test.resource.model.*;
 import org.junit.Ignore;
 import org.junit.Test;

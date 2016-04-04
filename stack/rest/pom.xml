@@ -406,11 +406,11 @@
             <version>${jersey-version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.usergrid</groupId>
-            <artifactId>usergrid-java-client</artifactId>
-            <scope>test</scope>
-        </dependency>
+        <!--<dependency>-->
+            <!--<groupId>org.apache.usergrid</groupId>-->
+            <!--<artifactId>usergrid-java-client</artifactId>-->
+            <!--<scope>test</scope>-->
+        <!--</dependency>-->
         <dependency>
             <groupId>commons-httpclient</groupId>
             <artifactId>commons-httpclient</artifactId>

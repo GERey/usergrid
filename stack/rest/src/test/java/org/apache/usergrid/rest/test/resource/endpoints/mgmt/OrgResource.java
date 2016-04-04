@@ -18,7 +18,6 @@
 package org.apache.usergrid.rest.test.resource.endpoints.mgmt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.usergrid.java.client.exception.ClientException;
 import org.apache.usergrid.rest.test.resource.endpoints.NamedResource;
 import org.apache.usergrid.rest.test.resource.endpoints.UrlResource;
 import org.apache.usergrid.rest.test.resource.model.ApiResponse;
