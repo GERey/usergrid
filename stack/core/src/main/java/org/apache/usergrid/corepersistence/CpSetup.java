@@ -76,9 +76,11 @@ public class CpSetup implements Setup {
 
     @Override
     public void initSchema() throws Exception {
-
-        // Initialize the management app index in Elasticsearch
-        this.emf.initializeManagementIndex();
+        //a no op, creating the injector creates the connections
+        //init our index if required
+        if(System.getProperty( "elasticsearch" ).isEmpty() || System.getProperty( "elasticsearch" ).equals( "true" )) {
+            this.emf.initializeManagementIndex();
+        }
 
         // Create the schema (including keyspace) in Cassandra
         setupSchema();

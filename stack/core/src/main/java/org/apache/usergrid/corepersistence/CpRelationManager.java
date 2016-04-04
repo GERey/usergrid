@@ -419,15 +419,14 @@ public class CpRelationManager implements RelationManager {
 
             } );
         } ).doOnCompleted( () -> {
-
-            if ( !skipIndexingForType( memberEntity.getId().getType() ) ) {
-                indexService.queueNewEdge(applicationScope, memberEntity, edge);
+            if(System.getProperty( "elasticsearch" ).isEmpty() || System.getProperty( "elasticsearch" ).equals( "true" )) {
+                if ( !skipIndexingForType( memberEntity.getId().getType() ) ) {
+                    indexService.queueNewEdge( applicationScope, memberEntity, edge );
+                }
             }
-
-
             if ( logger.isDebugEnabled() ) {
-                logger.debug( "Added entity {}:{} to collection {}",
-                    itemRef.getUuid().toString(), itemRef.getType(), collectionName );
+                logger.debug( "Added entity {}:{} to collection {}", itemRef.getUuid().toString(), itemRef.getType(),
+                    collectionName );
             }
         } ).toBlocking().lastOrDefault( null );
 

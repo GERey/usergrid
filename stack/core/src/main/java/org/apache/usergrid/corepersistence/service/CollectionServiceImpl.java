@@ -64,7 +64,8 @@ public class CollectionServiceImpl implements CollectionService {
 
         final EntityBuilder results;
 
-        if ( !query.isPresent()) {
+
+        if ( !query.isPresent() ||((!System.getProperty( "elasticsearch" ).isEmpty() && !System.getProperty( "elasticsearch" ).equals( "true" )))) {
             results = pipelineBuilder.traverseCollection( collectionName ).loadEntities();
         }
         else {
