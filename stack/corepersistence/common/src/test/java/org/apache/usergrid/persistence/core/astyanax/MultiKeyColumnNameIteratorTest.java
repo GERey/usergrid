@@ -28,6 +28,7 @@ import java.util.HashMap;
 
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -117,6 +118,7 @@ public class MultiKeyColumnNameIteratorTest {
     }
 
 
+    @Ignore
     @Test
     public void multiIterator() {
 
