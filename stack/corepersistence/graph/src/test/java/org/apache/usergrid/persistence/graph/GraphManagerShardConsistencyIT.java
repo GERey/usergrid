@@ -41,6 +41,7 @@ import org.apache.usergrid.StressTest;
 import org.apache.usergrid.persistence.model.util.UUIDGenerator;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -173,6 +174,7 @@ public class GraphManagerShardConsistencyIT {
         deleteExecutor = MoreExecutors.listeningDecorator( Executors.newFixedThreadPool( size ) );
     }
 
+    @Ignore("Too intense for travis")
     @Test(timeout=300000) // set a timeout so this doesn't run forever in the event that it is failing
     public void writeThousandsSingleSource()
         throws InterruptedException, ExecutionException, MigrationException, UnsupportedEncodingException {
