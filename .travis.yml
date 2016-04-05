@@ -1,11 +1,11 @@
 language: java
 jdk:
 - oraclejdk8
+sudo: required
 services:
   - cassandra
   - elasticsearch
 
 before_script:
   - sleep 10
-
 before_install: cd stack
