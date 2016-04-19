@@ -34,7 +34,9 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import org.apache.usergrid.persistence.collection.EntitySet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
@@ -601,12 +603,36 @@ public class CpEntityManager implements EntityManager {
             handleWriteUniqueVerifyException( entity, wuve );
         }
 
-        // queue an event to update the new entity
-        indexService.queueEntityIndexUpdate( applicationScope, cpEntity, 0 );
+        if ( !skipIndexingForType( cpEntity.getId().getType() ) ) {
 
+            // queue an event to update the new entity
+            indexService.queueEntityIndexUpdate( applicationScope, cpEntity, 0 );
 
-        // queue up an event to clean-up older versions than this one from the index
-        indexService.queueDeIndexOldVersion( applicationScope, entityId );
+            // queue up an event to clean-up older versions than this one from the index
+            if (entityManagerFig.getDeindexOnUpdate()) {
+                indexService.queueDeIndexOldVersion( applicationScope, entityId );
+            }
+        }
+    }
+
+    private boolean skipIndexingForType( String type ) {
+
+        boolean skipIndexing = false;
+
+        MapManager mm = getMapManagerForTypes();
+        IndexSchemaCache indexSchemaCache = indexSchemaCacheFactory.getInstance( mm );
+        String collectionName = Schema.defaultCollectionName( type );
+        Optional<Map> collectionIndexingSchema =  indexSchemaCache.getCollectionSchema( collectionName );
+
+        if ( collectionIndexingSchema.isPresent()) {
+            Map jsonMapData = collectionIndexingSchema.get();
+            final ArrayList fields = (ArrayList) jsonMapData.get( "fields" );
+            if ( fields.size() == 1 && fields.get(0).equals("none")) {
+                skipIndexing = true;
+            }
+        }
+
+        return skipIndexing;
     }
 
 
@@ -668,8 +694,9 @@ public class CpEntityManager implements EntityManager {
 
         Id entityId = new SimpleId( entityRef.getUuid(), entityRef.getType() );
 
-        //Step 4 && 5
-        indexService.queueEntityDelete( applicationScope, entityId );
+        if ( !skipIndexingForType( entityId.getType() ) ) {
+            indexService.queueEntityDelete( applicationScope, entityId );
+        }
 
         //Step 6
         //delete from our UUID index
@@ -712,7 +739,8 @@ public class CpEntityManager implements EntityManager {
     }
 
     @Override
-    public Results searchCollectionConsistent( EntityRef entityRef, String collectionName, Query query, int expectedResults) throws Exception {
+    public Results searchCollectionConsistent(
+        EntityRef entityRef, String collectionName, Query query, int expectedResults) throws Exception {
 
         return getRelationManager( entityRef ).searchCollectionConsistent(collectionName, query, expectedResults);
     }
@@ -752,8 +780,8 @@ public class CpEntityManager implements EntityManager {
     public RelationManager getRelationManager( EntityRef entityRef ) {
         Preconditions.checkNotNull(entityRef, "entityRef cannot be null");
 
-        CpRelationManager relationManager =
-            new CpRelationManager(managerCache, indexService, collectionService, connectionService, this, entityManagerFig, applicationId, entityRef );
+        CpRelationManager relationManager = new CpRelationManager( managerCache, indexService, collectionService,
+            connectionService, this, entityManagerFig, applicationId, indexSchemaCacheFactory, entityRef );
         return relationManager;
     }
 
@@ -828,7 +856,8 @@ public class CpEntityManager implements EntityManager {
 
         Timer.Context repairedEntityGet = entGetRepairedEntityTimer.time();
 
-        //TODO: can't we just sub in the getEntityRepair method here so for every read of a uniqueEntityField we can verify it is correct?
+        // TODO: can't we just sub in the getEntityRepair method here
+        // so for every read of a uniqueEntityField we can verify it is correct?
 
         StringField uniqueLookupRepairField =  new StringField( propertyName, aliasType.toString());
 
@@ -914,8 +943,8 @@ public class CpEntityManager implements EntityManager {
         // add a warn statement so we can see if we have data migration issues.
         // TODO When we get an event system, trigger a repair if this is detected
         if ( results.size() > 1 ) {
-            logger.warn( "More than 1 entity with Owner id '{}' of type '{}' and alias '{}' exists. This is a duplicate alias, and needs audited",
-                    ownerRef, collectionType, aliasValue );
+            logger.warn( "More than 1 entity with Owner id '{}' of type '{}' and alias '{}' exists. " +
+                "This is a duplicate alias, and needs audited", ownerRef, collectionType, aliasValue );
         }
 
         return results.get(aliasValue);
@@ -1137,7 +1166,9 @@ public class CpEntityManager implements EntityManager {
 
         //Adding graphite metrics
 
-        indexService.queueEntityIndexUpdate(applicationScope, cpEntity, 0);
+        if ( !skipIndexingForType( cpEntity.getId().getType() ) ) {
+            indexService.queueEntityIndexUpdate( applicationScope, cpEntity, 0 );
+        }
     }
 
 
@@ -1783,12 +1814,17 @@ public class CpEntityManager implements EntityManager {
 
         //do a check to see if you have a * field. If you do have a * field then ignore all other fields
         //and only accept the * field.
-        if(fieldProperties.contains( "*" )){
-            ArrayList<String> wildCardArrayList = new ArrayList<>(  );
+        if ( fieldProperties.contains( "*" )) {
+            ArrayList<String> wildCardArrayList = new ArrayList<>();
             wildCardArrayList.add( "*" );
-            schemaMap.put( "fields",wildCardArrayList );
-        }
-        else {
+            schemaMap.put( "fields", wildCardArrayList );
+
+        } else if ( fieldProperties.contains( "none" )) {
+            ArrayList<String> wildCardArrayList = new ArrayList<>();
+            wildCardArrayList.add( "none" );
+            schemaMap.put( "fields", wildCardArrayList );
+
+        } else {
             schemaMap.putAll( properties );
         }
 
@@ -1813,7 +1849,7 @@ public class CpEntityManager implements EntityManager {
     public Object getCollectionSchema( String collectionName ){
         MapManager mm = getMapManagerForTypes();
 
-        IndexSchemaCache indexSchemaCache = indexSchemaCacheFactory.getInstance( mm ); //managerCache.getIndexSchema( mm );
+        IndexSchemaCache indexSchemaCache = indexSchemaCacheFactory.getInstance( mm );
 
         Optional<Map> collectionIndexingSchema =  indexSchemaCache.getCollectionSchema( collectionName );
 
@@ -2386,7 +2422,8 @@ public class CpEntityManager implements EntityManager {
         if ( !skipAggregateCounters ) {
             long timestamp = cass.createTimestamp();
             Mutator<ByteBuffer> m = createMutator( cass.getApplicationKeyspace( applicationId ), be );
-            counterUtils.batchIncrementAggregateCounters( m, applicationId, userId, groupId, null, category, counters, timestamp );
+            counterUtils.batchIncrementAggregateCounters(
+                m, applicationId, userId, groupId, null, category, counters, timestamp );
 
             //Adding graphite metrics
             Timer.Context timeIncrementCounters =entIncrementAggregateCountersTimer.time();
@@ -2476,22 +2513,41 @@ public class CpEntityManager implements EntityManager {
     @Override
     public Results getEntities( List<UUID> ids, String type ) {
 
-        ArrayList<Entity> entities = new ArrayList<Entity>();
 
-        for ( UUID uuid : ids ) {
-            EntityRef ref = new SimpleEntityRef( type, uuid );
-            Entity entity = null;
-            try {
-                entity = get( ref );
-            }
-            catch ( Exception ex ) {
-                logger.warn( "Entity {}/{} not found", uuid, type );
-            }
 
-            if ( entity != null ) {
-                entities.add( entity );
-            }
+        List<Id> entityIds = new ArrayList<>();
+
+        for( UUID uuid : ids){
+
+            entityIds.add(new SimpleId( uuid, type ));
+
         }
+
+        // leverage ecm.load so it's a batch fetch of all entities from Cassandra
+        EntitySet entitySet = ecm.load( entityIds ).toBlocking().last();
+
+        List<Entity> entities = entitySet.getEntities().stream().map( mvccEntity -> {
+
+            if( mvccEntity.getEntity().isPresent() ){
+
+                org.apache.usergrid.persistence.model.entity.Entity cpEntity = mvccEntity.getEntity().get();
+
+                Class clazz = Schema.getDefaultSchema().getEntityClass( mvccEntity.getId().getType() );
+
+                Entity entity = EntityFactory.newEntity( mvccEntity.getId().getUuid(), mvccEntity.getId().getType(), clazz );
+                entity.setProperties(  cpEntity  );
+
+                return entity;
+
+            }else{
+
+                logger.warn("Tried fetching entity with id: {} and type: but was not found",
+                    mvccEntity.getId().getUuid(), mvccEntity.getId().getType() );
+
+                return null;
+            }
+        }).collect(Collectors.toList());
+
 
         return Results.fromEntities( entities );
     }
@@ -2985,8 +3041,9 @@ public class CpEntityManager implements EntityManager {
 
         final SearchEdgeType searchByEdgeType = createConnectionTypeSearch( entityRef.asId() );
 
-        return graphManager.getEdgeTypesFromSource( searchByEdgeType ).map( edgeName -> getConnectionNameFromEdgeName( edgeName ) ).collect(
-            () -> new HashSet<String>(), ( r, s ) -> r.add( s ) ).toBlocking().last();
+        return graphManager.getEdgeTypesFromSource(
+            searchByEdgeType ).map( edgeName -> getConnectionNameFromEdgeName( edgeName ) )
+                .collect( () -> new HashSet<String>(), ( r, s ) -> r.add( s ) ).toBlocking().last();
     }
 
 
@@ -2999,7 +3056,8 @@ public class CpEntityManager implements EntityManager {
         final SearchEdgeType searchByEdgeType = createConnectionTypeSearch( entityRef.asId() );
 
         return graphManager.getEdgeTypesToTarget(searchByEdgeType).map(
-                    edgeName -> getConnectionNameFromEdgeName( edgeName ) ).collect( () -> new HashSet<String>(  ), ( r, s ) -> r.add(s) ).toBlocking().last();
+            edgeName -> getConnectionNameFromEdgeName( edgeName ) )
+                .collect( () -> new HashSet<String>(  ), ( r, s ) -> r.add(s) ).toBlocking().last();
     }
 
 
@@ -3028,7 +3086,8 @@ public class CpEntityManager implements EntityManager {
             try {
                 for (int i = 0; i < 20; i++) {
                     if (searchCollection(
-                        new SimpleEntityRef(org.apache.usergrid.persistence.entities.Application.ENTITY_TYPE, getApplicationId()),
+                        new SimpleEntityRef(
+                            org.apache.usergrid.persistence.entities.Application.ENTITY_TYPE, getApplicationId()),
                         InflectionUtils.pluralize("refresh"),
                         Query.fromQL("select * where uuid='" + refreshEntity.getUuid() + "'")
                     ).size() > 0

@@ -17,35 +17,38 @@
  * under the License.
  */
 
-package org.apache.usergrid.corepersistence;
+package org.apache.usergrid.corepersistence.asyncevents.model;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.usergrid.persistence.collection.serialization.impl.migration.EntityIdScope;
 
 
-import java.util.UUID;
+public final class EntityIndexEvent extends AsyncEvent {
 
 
-import com.google.common.base.Optional;
+    @JsonProperty
+    protected EntityIdScope entityIdScope;
+
+    @JsonProperty
+    private long updatedAfter;
+
+    public EntityIndexEvent() {
+        super();
+    }
+
+    public EntityIndexEvent(String sourceRegion, EntityIdScope entityIdScope, final long updatedAfter ) {
+        super(sourceRegion);
+        this.entityIdScope = entityIdScope;
+        this.updatedAfter = updatedAfter;
+    }
 
 
-/**
- * A simple cache interface for looking up entities from an EM
- */
-public interface ApplicationIdCache {
+    public long getUpdatedAfter() {
+        return updatedAfter;
+    }
 
 
-    /**
-     * Evict the application by name
-     */
-    UUID getApplicationId( final String applicationName );
-
-
-    /**
-     * Evict the app id by the name
-     */
-    void evictAppId( final String applicationName );
-
-
-    /**
-     * Evict all caches
-     */
-    void evictAll();
+    public EntityIdScope getEntityIdScope() {
+        return entityIdScope;
+    }
 }
