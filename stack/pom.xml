@@ -117,7 +117,8 @@
         <shiro-version>1.2.4</shiro-version>
         <slf4j-version>1.7.2</slf4j-version>
         <snakeyaml-version>1.9</snakeyaml-version>
-        <tomcat-version>7.0.64</tomcat-version>
+        <!-- We can't roll to 8.5.x until this is resolved https://jira.spring.io/browse/SPR-14078-->
+        <tomcat-version>8.0.33</tomcat-version>
         <antlr.version>3.4</antlr.version>
         <tika.version>1.4</tika.version>
         <mockito.version>1.10.8</mockito.version>
