@@ -17,15 +17,8 @@
 package org.apache.usergrid.tools;
 
 
-import me.prettyprint.hector.testutils.EmbeddedServerHelper;
-import org.apache.commons.cli.*;
-import org.apache.commons.lang.ClassUtils;
-import org.apache.usergrid.corepersistence.CpEntityManagerFactory;
-import org.apache.usergrid.management.ManagementService;
-import org.apache.usergrid.persistence.EntityManagerFactory;
-import org.apache.usergrid.persistence.cassandra.CassandraService;
-import org.apache.usergrid.persistence.cassandra.Setup;
-import org.apache.usergrid.services.ServiceManagerFactory;
+import java.util.Properties;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +26,24 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-import java.util.Properties;
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.GnuParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.lang.ClassUtils;
+
+import org.apache.usergrid.corepersistence.CpEntityManagerFactory;
+import org.apache.usergrid.management.ManagementService;
+import org.apache.usergrid.persistence.EntityManagerFactory;
+import org.apache.usergrid.persistence.cassandra.CassandraService;
+import org.apache.usergrid.persistence.cassandra.Setup;
+import org.apache.usergrid.services.ServiceManagerFactory;
+
+import me.prettyprint.hector.testutils.EmbeddedServerHelper;
 
 import static org.apache.usergrid.utils.JsonUtils.mapToFormattedJsonString;
 import static org.junit.Assert.assertNotNull;
