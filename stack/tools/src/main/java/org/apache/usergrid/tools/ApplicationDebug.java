@@ -53,7 +53,7 @@ public class ApplicationDebug extends ToolBase {
     private static final int PAGE_SIZE = 100;
 
 
-    private static final Logger logger = LoggerFactory.getLogger( UniqueValueScanner.class );
+    private static final Logger logger = LoggerFactory.getLogger( ApplicationDebug.class );
 
     private static final String ORG_ARG = "org";
 
