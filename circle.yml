@@ -7,7 +7,6 @@ machine:
   general:
      build_dir: stack
 
-   machine:
    services:
     - cassandra
     - elasticsearch
