@@ -1,0 +1,13 @@
+## Customize the test machine
+machine:
+
+  timezone:
+    America/Los_Angeles # Set the timezone
+
+  general:
+     build_dir: stack
+
+   machine:
+   services:
+    - cassandra
+    - elasticsearch
