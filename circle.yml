@@ -9,3 +9,7 @@ machine:
   services:
     - cassandra
     - elasticsearch
+
+test:
+  pre:
+    - mvn test
