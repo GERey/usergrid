@@ -9,6 +9,10 @@ machine:
   services:
     - cassandra
 
+dependencies:
+  override:
+    - mvn install
+
 test:
   pre:
     - mvn install
