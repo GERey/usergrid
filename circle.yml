@@ -5,6 +5,7 @@ general:
 machine:
   timezone:
     America/Los_Angeles # Set the timezone
+
   services:
-    -cassandra
-    -elasticsearch
+    - cassandra
+    - elasticsearch
