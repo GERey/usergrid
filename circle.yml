@@ -1,0 +1,20 @@
+## Customize the test machine
+general:
+  build_dir: stack
+
+machine:
+  timezone:
+    America/Los_Angeles # Set the timezone
+
+  services:
+    - cassandra
+
+test:
+  post:
+    - mkdir -p $CIRCLE_TEST_REPORTS/junit/
+    - find . -type f -regex ".*/target/surefire-reports/.*xml" -exec cp {} $CIRCLE_TEST_REPORTS/junit/ \;
+
+
+# test:
+#   pre:
+#     - mvn test
