@@ -1,6 +1,6 @@
 ## Customize the test machine
 general:
-  build_dir: api
+  build_dir: stack
 
 machine:
   timezone:
@@ -10,6 +10,6 @@ machine:
     - cassandra
     - elasticsearch
 
-test:
-  pre:
-    - mvn test
+# test:
+#   pre:
+#     - mvn test
